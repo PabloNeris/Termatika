@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Termatika</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <nav class="games-nav">
+    <a href="/" class="games-nav-link active">🧮 Termatika</a>
+    <a href="/mathgol/" class="games-nav-link">⚽ MathGol</a>
+  </nav>
+
+  <h1>TERMATIKA</h1>
+
+  <div id="tabs">
+    <button class="tab active" id="tab-guess" data-mode="guess">Adivinhar</button>
+    <button class="tab" id="tab-target" data-mode="target">Resultado</button>
+  </div>
+
+  <p class="subtitle" id="subtitle"></p>
+
+  <div id="board"></div>
+  <div id="message"></div>
+  <div id="tries"></div>
+  <p class="hint">Clique numa casa ou use ← → para navegar entre os blocos.</p>
+  <div id="keyboard"></div>
+  <button id="newgame">Novo jogo</button>
+
+  <script src="app.js"></script>
+</body>
+</html>
