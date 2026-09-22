@@ -1,25 +1,130 @@
+/* ============================================================
+   Termatika — client-side (sem backend)
+   Geração de equações e verificação feitas localmente.
+   ============================================================ */
+
+/* ---------------- Gerador de equações ---------------- */
+function generateEquation(length) {
+  const ops = ['+', '-', '*', '/'];
+  const candidates = [];
+
+  for (let attempt = 0; attempt < 2000 && candidates.length < 20; attempt++) {
+    const op = ops[Math.floor(Math.random() * ops.length)];
+    let a, b, result;
+
+    if (op === '+') {
+      a = Math.floor(Math.random() * 998) + 1;
+      b = Math.floor(Math.random() * 998) + 1;
+      result = a + b;
+    } else if (op === '-') {
+      a = Math.floor(Math.random() * 998) + 1;
+      b = Math.floor(Math.random() * a) + 1;
+      result = a - b;
+    } else if (op === '*') {
+      a = Math.floor(Math.random() * 98) + 2;
+      b = Math.floor(Math.random() * 98) + 2;
+      result = a * b;
+    } else {
+      b = Math.floor(Math.random() * 48) + 2;
+      result = Math.floor(Math.random() * 98) + 1;
+      a = b * result;
+    }
+
+    if (result < 0) continue;
+    const eq = `${a}${op}${b}=${result}`;
+    if (eq.length === length) candidates.push(eq);
+  }
+
+  if (candidates.length === 0) {
+    // fallback seguro
+    return '12+34=46';
+  }
+  return candidates[Math.floor(Math.random() * candidates.length)];
+}
+
+function gradeGuess(guess, target) {
+  const grading = new Array(guess.length).fill('gray');
+  const targetUsed = new Array(target.length).fill(false);
+  const guessUsed = new Array(guess.length).fill(false);
+
+  // verde: posição exata
+  for (let i = 0; i < guess.length; i++) {
+    if (guess[i] === target[i]) {
+      grading[i] = 'green';
+      targetUsed[i] = true;
+      guessUsed[i] = true;
+    }
+  }
+
+  // dourado: caractere certo, posição errada
+  for (let i = 0; i < guess.length; i++) {
+    if (guessUsed[i]) continue;
+    for (let j = 0; j < target.length; j++) {
+      if (!targetUsed[j] && guess[i] === target[j]) {
+        grading[i] = 'gold';
+        targetUsed[j] = true;
+        break;
+      }
+    }
+  }
+
+  return grading;
+}
+
+function isValidEquation(str) {
+  const match = str.match(/^(\d+)([\+\-\*\/])(\d+)=(\d+)$/);
+  if (!match) return false;
+  const a = Number(match[1]);
+  const op = match[2];
+  const b = Number(match[3]);
+  const result = Number(match[4]);
+
+  let expected;
+  if (op === '+') expected = a + b;
+  else if (op === '-') expected = a - b;
+  else if (op === '*') expected = a * b;
+  else if (op === '/') expected = (b !== 0 && a % b === 0) ? a / b : NaN;
+
+  return expected === result;
+}
+
+/* Gera template para modo Resultado */
+function generateTargetTemplate(length) {
+  const eq = generateEquation(length);
+  const template = [];
+  for (let i = 0; i < eq.length; i++) {
+    const ch = eq[i];
+    const isOp = ['+', '-', '*', '/', '='].includes(ch);
+    // fixa operadores, = e os dígitos do resultado (após o =)
+    const eqIdx = eq.indexOf('=');
+    const isResult = i > eqIdx;
+    template.push({ fixed: isOp || isResult, char: ch });
+  }
+  return { equation: eq, template };
+}
+
 /* ---------------- Estado ---------------- */
 let mode = 'guess';
-let busy = false; // trava input enquanto uma requisição está em andamento
+let busy = false;
 
 const guessState = {
-  token: null,
+  target: '',
   length: 8,
   maxAttempts: 6,
   cells: [],
   cursor: 0,
-  attempts: [],   // {guess, grading}
-  gameOver: true, // começa travado até a primeira resposta da API chegar
+  attempts: [],
+  gameOver: true,
   keyStatus: {}
 };
 
 const targetState = {
-  token: null,
-  template: [],   // [{fixed, char?}]
+  equation: '',
+  template: [],
   maxAttempts: 6,
   values: [],
   cursor: 0,
-  attempts: [],   // {values, correct}
+  attempts: [],
   gameOver: true
 };
 
@@ -30,162 +135,124 @@ const keyboardEl = document.getElementById('keyboard');
 const subtitleEl = document.getElementById('subtitle');
 const newGameBtn = document.getElementById('newgame');
 
-function setMessage(text){ messageEl.textContent = text; }
-
-/* ---------------- Chamadas à API ---------------- */
-async function apiPost(path, body){
-  const res = await fetch(path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body || {})
-  });
-  let data = null;
-  try { data = await res.json(); } catch(e) { /* corpo vazio ou inválido */ }
-  if(!res.ok){
-    throw new Error((data && data.error) || 'Erro de comunicação com o servidor.');
-  }
-  return data;
-}
+function setMessage(text) { messageEl.textContent = text; }
 
 /* ---------------- Modo: Adivinhar ---------------- */
-async function guessStart(){
+function guessStart() {
   guessState.attempts = [];
-  guessState.gameOver = true; // trava enquanto carrega
+  guessState.keyStatus = {};
+  guessState.target = generateEquation(guessState.length);
   guessState.cells = new Array(guessState.length).fill('');
   guessState.cursor = 0;
-  guessState.keyStatus = {};
-  setMessage('Carregando novo jogo...');
-  render();
-
-  busy = true;
-  try{
-    const data = await apiPost('/api/guess/new', {});
-    guessState.token = data.token;
-    guessState.length = data.length;
-    guessState.maxAttempts = data.maxAttempts;
-    guessState.cells = new Array(data.length).fill('');
-    guessState.gameOver = false;
-    setMessage('');
-  }catch(e){
-    setMessage('Não consegui iniciar o jogo: ' + e.message);
-  }
-  busy = false;
+  guessState.gameOver = false;
+  setMessage('');
   render();
 }
 
-function guessMoveCursor(delta){
-  guessState.cursor = Math.min(guessState.length-1, Math.max(0, guessState.cursor + delta));
+function guessMoveCursor(delta) {
+  guessState.cursor = Math.min(guessState.length - 1, Math.max(0, guessState.cursor + delta));
 }
 
-function guessTypeChar(ch){
-  if(guessState.gameOver || busy) return;
+function guessTypeChar(ch) {
+  if (guessState.gameOver || busy) return;
   guessState.cells[guessState.cursor] = ch;
-  if(guessState.cursor < guessState.length - 1) guessState.cursor++;
+  if (guessState.cursor < guessState.length - 1) guessState.cursor++;
   render();
 }
 
-function guessBackspace(){
-  if(guessState.gameOver || busy) return;
-  if(guessState.cells[guessState.cursor] !== ''){
+function guessBackspace() {
+  if (guessState.gameOver || busy) return;
+  if (guessState.cells[guessState.cursor] !== '') {
     guessState.cells[guessState.cursor] = '';
-  } else if(guessState.cursor > 0){
+  } else if (guessState.cursor > 0) {
     guessState.cursor--;
     guessState.cells[guessState.cursor] = '';
   }
   render();
 }
 
-async function guessSubmit(){
-  if(guessState.gameOver || busy) return;
-  if(guessState.cells.includes('')){
+function guessSubmit() {
+  if (guessState.gameOver || busy) return;
+  if (guessState.cells.includes('')) {
     setMessage('Preencha todas as casas.');
     shakeCurrentRow();
     return;
   }
   const guess = guessState.cells.join('');
 
-  busy = true;
-  setMessage('Conferindo...');
-  render();
-  try{
-    const data = await apiPost('/api/guess/guess', { token: guessState.token, guess });
-    guessState.token = data.token;
-    guessState.attempts.push({ guess, grading: data.grading });
-    updateKeyboardColors(guess, data.grading);
-    guessState.gameOver = data.gameOver;
-
-    if(data.correct){
-      setMessage('Isso aí! Você acertou em ' + data.attempts + (data.attempts===1 ? ' tentativa.' : ' tentativas.'));
-    } else if(data.gameOver){
-      setMessage('Não foi dessa vez. Era: ' + data.target);
-    } else {
-      setMessage('');
-    }
-    guessState.cells = new Array(guessState.length).fill('');
-    guessState.cursor = 0;
-  }catch(e){
-    setMessage(e.message);
+  if (!isValidEquation(guess)) {
+    setMessage('A equação precisa ser matematicamente válida.');
     shakeCurrentRow();
+    return;
   }
-  busy = false;
+
+  const grading = gradeGuess(guess, guessState.target);
+  guessState.attempts.push({ guess, grading });
+  updateKeyboardColors(guess, grading);
+
+  const isCorrect = grading.every(g => g === 'green');
+  const attemptsUsed = guessState.attempts.length;
+
+  if (isCorrect) {
+    guessState.gameOver = true;
+    setMessage('Isso aí! Você acertou em ' + attemptsUsed + (attemptsUsed === 1 ? ' tentativa.' : ' tentativas.'));
+  } else if (attemptsUsed >= guessState.maxAttempts) {
+    guessState.gameOver = true;
+    setMessage('Não foi dessa vez. Era: ' + guessState.target);
+  } else {
+    setMessage('');
+  }
+
+  guessState.cells = new Array(guessState.length).fill('');
+  guessState.cursor = 0;
   render();
 }
 
 /* ---------------- Modo: Resultado ---------------- */
-async function targetStart(){
+function targetStart() {
   targetState.attempts = [];
-  targetState.gameOver = true; // trava enquanto carrega
-  setMessage('Carregando novo desafio...');
-  render();
-
-  busy = true;
-  try{
-    const data = await apiPost('/api/target/new', {});
-    targetState.token = data.token;
-    targetState.template = data.template;
-    targetState.maxAttempts = data.maxAttempts;
-    targetState.values = data.template.map(() => '');
-    targetState.cursor = targetState.template.findIndex(c => !c.fixed);
-    if(targetState.cursor === -1) targetState.cursor = 0;
-    targetState.gameOver = false;
-    setMessage('');
-  }catch(e){
-    setMessage('Não consegui iniciar o desafio: ' + e.message);
-  }
-  busy = false;
+  const { equation, template } = generateTargetTemplate(8);
+  targetState.equation = equation;
+  targetState.template = template;
+  targetState.values = template.map(() => '');
+  targetState.cursor = template.findIndex(c => !c.fixed);
+  if (targetState.cursor === -1) targetState.cursor = 0;
+  targetState.gameOver = false;
+  setMessage('');
   render();
 }
 
-function targetFirstBlank(from){
+function targetFirstBlank(from) {
   const n = targetState.template.length;
-  for(let i=from; i<n; i++) if(!targetState.template[i].fixed) return i;
-  for(let i=0; i<from; i++) if(!targetState.template[i].fixed) return i;
-  return from;
-}
-function targetPrevBlank(from){
-  for(let i=from-1; i>=0; i--) if(!targetState.template[i].fixed) return i;
-  for(let i=targetState.template.length-1; i>from; i--) if(!targetState.template[i].fixed) return i;
+  for (let i = from; i < n; i++) if (!targetState.template[i].fixed) return i;
+  for (let i = 0; i < from; i++) if (!targetState.template[i].fixed) return i;
   return from;
 }
 
-function targetMoveCursor(delta){
+function targetPrevBlank(from) {
+  for (let i = from - 1; i >= 0; i--) if (!targetState.template[i].fixed) return i;
+  for (let i = targetState.template.length - 1; i > from; i--) if (!targetState.template[i].fixed) return i;
+  return from;
+}
+
+function targetMoveCursor(delta) {
   targetState.cursor = delta > 0
-    ? targetFirstBlank(targetState.cursor+1)
+    ? targetFirstBlank(targetState.cursor + 1)
     : targetPrevBlank(targetState.cursor);
 }
 
-function targetTypeChar(ch){
-  if(targetState.gameOver || busy) return;
-  if(!/^[0-9]$/.test(ch)) return;
-  if(targetState.template[targetState.cursor].fixed) return;
+function targetTypeChar(ch) {
+  if (targetState.gameOver || busy) return;
+  if (!/^[0-9]$/.test(ch)) return;
+  if (targetState.template[targetState.cursor].fixed) return;
   targetState.values[targetState.cursor] = ch;
-  targetState.cursor = targetFirstBlank(targetState.cursor+1);
+  targetState.cursor = targetFirstBlank(targetState.cursor + 1);
   render();
 }
 
-function targetBackspace(){
-  if(targetState.gameOver || busy) return;
-  if(targetState.values[targetState.cursor] !== ''){
+function targetBackspace() {
+  if (targetState.gameOver || busy) return;
+  if (targetState.values[targetState.cursor] !== '') {
     targetState.values[targetState.cursor] = '';
   } else {
     targetState.cursor = targetPrevBlank(targetState.cursor);
@@ -194,47 +261,43 @@ function targetBackspace(){
   render();
 }
 
-async function targetSubmit(){
-  if(targetState.gameOver || busy) return;
-  const hasEmpty = targetState.template.some((c,i) => !c.fixed && targetState.values[i] === '');
-  if(hasEmpty){
+function targetSubmit() {
+  if (targetState.gameOver || busy) return;
+  const hasEmpty = targetState.template.some((c, i) => !c.fixed && targetState.values[i] === '');
+  if (hasEmpty) {
     setMessage('Preencha todos os espaços em branco.');
     shakeCurrentRow();
     return;
   }
 
-  busy = true;
-  setMessage('Conferindo...');
-  render();
-  try{
-    const data = await apiPost('/api/target/check', { token: targetState.token, values: targetState.values });
-    targetState.token = data.token;
-    targetState.attempts.push({ values: targetState.values.slice(), correct: data.correct });
-    targetState.gameOver = data.gameOver;
+  // Monta a equação com os valores preenchidos
+  const filled = targetState.template.map((c, i) => c.fixed ? c.char : targetState.values[i]).join('');
+  const isCorrect = isValidEquation(filled);
 
-    if(data.correct){
-      setMessage('Fechou! ' + data.equation + ' — resolvido em ' + data.attempts + (data.attempts===1 ? ' tentativa.' : ' tentativas.'));
-    } else if(data.gameOver){
-      setMessage('Não fechou em ' + targetState.maxAttempts + ' tentativas. Uma solução possível: ' + data.solutionExample);
-    } else {
-      setMessage('Ainda não bate. Próxima tentativa.');
-    }
-    targetState.values = targetState.template.map(() => '');
-    targetState.cursor = targetState.template.findIndex(c => !c.fixed);
-    if(targetState.cursor === -1) targetState.cursor = 0;
-  }catch(e){
-    setMessage(e.message);
-    shakeCurrentRow();
+  targetState.attempts.push({ values: targetState.values.slice(), correct: isCorrect });
+  const attemptsUsed = targetState.attempts.length;
+
+  if (isCorrect) {
+    targetState.gameOver = true;
+    setMessage('Fechou! ' + filled + ' — resolvido em ' + attemptsUsed + (attemptsUsed === 1 ? ' tentativa.' : ' tentativas.'));
+  } else if (attemptsUsed >= targetState.maxAttempts) {
+    targetState.gameOver = true;
+    setMessage('Não fechou em ' + targetState.maxAttempts + ' tentativas. Uma solução possível: ' + targetState.equation);
+  } else {
+    setMessage('Ainda não bate. Próxima tentativa.');
   }
-  busy = false;
+
+  targetState.values = targetState.template.map(() => '');
+  targetState.cursor = targetState.template.findIndex(c => !c.fixed);
+  if (targetState.cursor === -1) targetState.cursor = 0;
   render();
 }
 
 /* ---------------- UI compartilhada ---------------- */
-function shakeCurrentRow(){
+function shakeCurrentRow() {
   const rowIdx = mode === 'guess' ? guessState.attempts.length : targetState.attempts.length;
   const row = document.getElementById('row-' + rowIdx);
-  if(!row) return;
+  if (!row) return;
   row.querySelectorAll('.tile').forEach(t => {
     t.classList.remove('shake');
     void t.offsetWidth;
@@ -243,12 +306,12 @@ function shakeCurrentRow(){
 }
 
 const KEY_ROWS = [
-  ['1','2','3','4','5','6','7','8','9','0'],
-  ['+','-','*','/','='],
-  ['ENTER','⌫']
+  ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
+  ['+', '-', '*', '/', '='],
+  ['ENTER', '⌫']
 ];
 
-function buildKeyboard(){
+function buildKeyboard() {
   keyboardEl.innerHTML = '';
   KEY_ROWS.forEach(rowKeys => {
     const krow = document.createElement('div');
@@ -258,7 +321,7 @@ function buildKeyboard(){
       btn.className = 'key';
       btn.textContent = k;
       btn.dataset.key = k;
-      if(k === 'ENTER' || k === '⌫') btn.classList.add('wide');
+      if (k === 'ENTER' || k === '⌫') btn.classList.add('wide');
       btn.addEventListener('click', () => handleKey(k));
       krow.appendChild(btn);
     });
@@ -266,73 +329,73 @@ function buildKeyboard(){
   });
 }
 
-function updateKeyboardColors(guess, grading){
-  const rank = {gray:0, gold:1, green:2};
-  for(let i=0;i<guess.length;i++){
+function updateKeyboardColors(guess, grading) {
+  const rank = { gray: 0, gold: 1, green: 2 };
+  for (let i = 0; i < guess.length; i++) {
     const ch = guess[i];
-    if(ch === '=') continue;
+    if (ch === '=') continue;
     const status = grading[i];
-    if(!guessState.keyStatus[ch] || rank[status] > rank[guessState.keyStatus[ch]]){
+    if (!guessState.keyStatus[ch] || rank[status] > rank[guessState.keyStatus[ch]]) {
       guessState.keyStatus[ch] = status;
     }
   }
 }
 
-function refreshKeyboardVisuals(){
+function refreshKeyboardVisuals() {
   document.querySelectorAll('.key').forEach(btn => {
     const k = btn.dataset.key;
-    btn.classList.remove('green','gold','gray','disabled');
-    if(mode === 'guess'){
-      if(guessState.keyStatus[k]) btn.classList.add(guessState.keyStatus[k]);
+    btn.classList.remove('green', 'gold', 'gray', 'disabled');
+    if (mode === 'guess') {
+      if (guessState.keyStatus[k]) btn.classList.add(guessState.keyStatus[k]);
     } else {
-      if(['+','-','*','/','='].includes(k)) btn.classList.add('disabled');
+      if (['+', '-', '*', '/', '='].includes(k)) btn.classList.add('disabled');
     }
   });
   const enterBtn = document.querySelector('.key[data-key="ENTER"]');
-  if(enterBtn) enterBtn.textContent = mode === 'guess' ? 'ENTER' : 'VERIFICAR';
+  if (enterBtn) enterBtn.textContent = mode === 'guess' ? 'ENTER' : 'VERIFICAR';
 }
 
-function handleKey(k){
-  if(k === 'ENTER'){
+function handleKey(k) {
+  if (k === 'ENTER') {
     mode === 'guess' ? guessSubmit() : targetSubmit();
     return;
   }
-  if(k === '⌫'){
+  if (k === '⌫') {
     mode === 'guess' ? guessBackspace() : targetBackspace();
     return;
   }
-  if(mode === 'target' && !/^[0-9]$/.test(k)) return;
+  if (mode === 'target' && !/^[0-9]$/.test(k)) return;
   mode === 'guess' ? guessTypeChar(k) : targetTypeChar(k);
 }
 
-function render(){
+function render() {
   boardEl.innerHTML = '';
 
-  if(mode === 'guess'){
-    for(let r=0; r<guessState.maxAttempts; r++){
+  if (mode === 'guess') {
+    for (let r = 0; r < guessState.maxAttempts; r++) {
       const row = document.createElement('div');
       row.className = 'row';
       row.id = 'row-' + r;
 
-      if(r < guessState.attempts.length){
-        const {guess, grading} = guessState.attempts[r];
-        for(let c=0; c<guessState.length; c++){
+      if (r < guessState.attempts.length) {
+        const { guess, grading } = guessState.attempts[r];
+        for (let c = 0; c < guessState.length; c++) {
           const tile = document.createElement('div');
           tile.className = 'tile filled ' + grading[c];
           tile.textContent = guess[c];
           row.appendChild(tile);
         }
-      } else if(r === guessState.attempts.length && !guessState.gameOver){
-        for(let c=0; c<guessState.length; c++){
+      } else if (r === guessState.attempts.length && !guessState.gameOver) {
+        for (let c = 0; c < guessState.length; c++) {
           const tile = document.createElement('div');
           const ch = guessState.cells[c];
           tile.className = 'tile editable' + (ch ? ' filled' : '') + (c === guessState.cursor ? ' cursor' : '');
           tile.textContent = ch;
-          tile.addEventListener('click', () => { if(busy) return; guessState.cursor = c; render(); });
+          tile.addEventListener('click', () => { if (busy) return; guessState.cursor = c; render(); });
           row.appendChild(tile);
         }
       } else {
-        for(let c=0; c<guessState.length; c++){
+        for (let c = 0; c < guessState.length; c++) {
           const tile = document.createElement('div');
           tile.className = 'tile';
           row.appendChild(tile);
@@ -343,17 +406,17 @@ function render(){
     triesEl.textContent = '';
   } else {
     const tLen = targetState.template.length;
-    for(let r=0; r<targetState.maxAttempts; r++){
+    for (let r = 0; r < targetState.maxAttempts; r++) {
       const row = document.createElement('div');
       row.className = 'row';
       row.id = 'row-' + r;
 
-      if(r < targetState.attempts.length){
-        const {values, correct} = targetState.attempts[r];
-        for(let c=0; c<tLen; c++){
+      if (r < targetState.attempts.length) {
+        const { values, correct } = targetState.attempts[r];
+        for (let c = 0; c < tLen; c++) {
           const cell = targetState.template[c];
           const tile = document.createElement('div');
-          if(cell.fixed){
+          if (cell.fixed) {
             tile.className = 'tile fixed';
             tile.textContent = cell.char;
           } else {
@@ -362,26 +425,26 @@ function render(){
           }
           row.appendChild(tile);
         }
-      } else if(r === targetState.attempts.length && !targetState.gameOver){
-        for(let c=0; c<tLen; c++){
+      } else if (r === targetState.attempts.length && !targetState.gameOver) {
+        for (let c = 0; c < tLen; c++) {
           const cell = targetState.template[c];
           const tile = document.createElement('div');
-          if(cell.fixed){
+          if (cell.fixed) {
             tile.className = 'tile fixed';
             tile.textContent = cell.char;
           } else {
             const val = targetState.values[c];
             tile.className = 'tile editable' + (val ? ' filled' : '') + (c === targetState.cursor ? ' cursor' : '');
             tile.textContent = val;
-            tile.addEventListener('click', () => { if(busy) return; targetState.cursor = c; render(); });
+            tile.addEventListener('click', () => { if (busy) return; targetState.cursor = c; render(); });
           }
           row.appendChild(tile);
         }
       } else {
-        for(let c=0; c<tLen; c++){
+        for (let c = 0; c < tLen; c++) {
           const cell = targetState.template[c];
           const tile = document.createElement('div');
-          if(cell.fixed){
+          if (cell.fixed) {
             tile.className = 'tile fixed';
             tile.textContent = cell.char;
           } else {
@@ -400,8 +463,8 @@ function render(){
   refreshKeyboardVisuals();
 }
 
-function switchMode(newMode){
-  if(busy) return;
+function switchMode(newMode) {
+  if (busy) return;
   mode = newMode;
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.mode === mode));
   subtitleEl.textContent = mode === 'guess'
@@ -411,21 +474,21 @@ function switchMode(newMode){
   startCurrentMode();
 }
 
-function startCurrentMode(){
+function startCurrentMode() {
   mode === 'guess' ? guessStart() : targetStart();
 }
 
 document.getElementById('tab-guess').addEventListener('click', () => switchMode('guess'));
 document.getElementById('tab-target').addEventListener('click', () => switchMode('target'));
-newGameBtn.addEventListener('click', () => { if(busy) return; setMessage(''); startCurrentMode(); });
+newGameBtn.addEventListener('click', () => { if (busy) return; setMessage(''); startCurrentMode(); });
 
 document.addEventListener('keydown', (e) => {
   const k = e.key;
-  if(k === 'Enter'){ handleKey('ENTER'); return; }
-  if(k === 'Backspace'){ handleKey('⌫'); return; }
-  if(k === 'ArrowLeft'){ mode === 'guess' ? guessMoveCursor(-1) : targetMoveCursor(-1); render(); return; }
-  if(k === 'ArrowRight'){ mode === 'guess' ? guessMoveCursor(1) : targetMoveCursor(1); render(); return; }
-  if(/^[0-9]$/.test(k) || ['+','-','*','/','='].includes(k)){
+  if (k === 'Enter') { handleKey('ENTER'); return; }
+  if (k === 'Backspace') { handleKey('⌫'); return; }
+  if (k === 'ArrowLeft') { mode === 'guess' ? guessMoveCursor(-1) : targetMoveCursor(-1); render(); return; }
+  if (k === 'ArrowRight') { mode === 'guess' ? guessMoveCursor(1) : targetMoveCursor(1); render(); return; }
+  if (/^[0-9]$/.test(k) || ['+', '-', '*', '/', '='].includes(k)) {
     handleKey(k);
   }
 });

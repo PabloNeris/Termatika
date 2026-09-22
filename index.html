@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>MathGol</title>
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- TELA: MENU INICIAL -->
+<main id="main-menu-screen" class="screen">
+  <a class="hub-link" href="/">&larr; Voltar para o Termatika</a>
+  <div class="card">
+    <h1 class="title">⚽ MathGol</h1>
+    <p class="subtitle">Cobranças de pênalti com desafios de matemática</p>
+
+    <button class="btn" id="btn-start">Iniciar Jogo</button>
+    <button class="btn secondary" id="btn-instructions">Instruções 🔊</button>
+    <button class="btn secondary" id="btn-accessibility">Configurações de Acessibilidade</button>
+    <button class="btn secondary" id="btn-avatar">Escolher Apelido e Time</button>
+  </div>
+</main>
+
+<!-- TELA: INSTRUÇÕES -->
+<section id="instructions-screen" class="screen" hidden>
+  <div class="card">
+    <h2 class="title">Como jogar</h2>
+    <p>Escolha a série que você está estudando, depois responda a pergunta de matemática antes de cada cobrança. Você tem 30 segundos. Acertar manda a bola pro gol! Errar não é problema — é só uma chance de tentar de novo. 🙂</p>
+    <button class="btn small" id="btn-play-instructions">▶️ Ouvir instruções</button>
+    <button class="btn" id="btn-back-from-instructions" style="margin-top:16px">Voltar</button>
+  </div>
+</section>
+
+<!-- TELA: ACESSIBILIDADE -->
+<section id="accessibility-screen" class="screen" hidden>
+  <div class="card">
+    <h2 class="title">Acessibilidade</h2>
+
+    <div class="a11y-toggle">
+      <span>Alto contraste</span>
+      <button class="switch" id="toggle-contrast" aria-pressed="false" aria-label="Ativar alto contraste"></button>
+    </div>
+
+    <div class="a11y-toggle">
+      <span>Espaçamento p/ leitura (dislexia)</span>
+      <button class="switch" id="toggle-dyslexia" aria-pressed="false" aria-label="Ativar espaçamento para dislexia"></button>
+    </div>
+
+    <div class="a11y-toggle">
+      <span>Narração em áudio</span>
+      <button class="switch" id="toggle-audio" aria-pressed="true" aria-label="Ativar narração em áudio"></button>
+    </div>
+
+    <div class="a11y-toggle">
+      <span>Texto ampliado</span>
+      <button class="switch" id="toggle-large-text" aria-pressed="false" aria-label="Ativar texto ampliado"></button>
+    </div>
+
+    <button class="btn" id="btn-back-from-accessibility" style="margin-top:16px">Voltar</button>
+  </div>
+</section>
+
+<!-- TELA: ESCOLHA DE APELIDO -->
+<section id="avatar-screen" class="screen" hidden>
+  <div class="card">
+    <h2 class="title">Quem vai jogar?</h2>
+    <p class="subtitle">Nenhum nome de verdade — só escolha um apelido divertido</p>
+
+    <div class="nickname-preview" id="nickname-preview" aria-live="polite"></div>
+
+    <button class="btn secondary" id="btn-reroll">🎲 Gerar outro apelido</button>
+
+    <p class="subtitle" style="margin-top:24px">Escolha sua seleção:</p>
+    <select id="team-select" class="btn secondary" style="text-align:center"></select>
+
+    <button class="btn" id="btn-confirm-avatar" style="margin-top:16px">Continuar</button>
+  </div>
+</section>
+
+<!-- TELA: ESCOLHA DE SÉRIE -->
+<section id="grade-screen" class="screen" hidden>
+  <div class="card card-wide">
+    <h2 class="title">Qual é a sua série?</h2>
+    <p class="subtitle">As contas ficam do jeitinho certo pra sua turma</p>
+
+    <div class="grade-grid" id="grade-grid" role="radiogroup" aria-label="Escolha de série"></div>
+
+    <button class="btn" id="btn-confirm-grade" style="margin-top:20px">Começar a jogar</button>
+    <button class="btn secondary" id="btn-back-from-grade" style="margin-top:8px">Voltar</button>
+  </div>
+</section>
+
+<!-- TELA: JOGO -->
+<section id="game-screen" class="screen" hidden>
+  <div class="hud">
+    <span class="grade-badge" id="grade-display">2º ano</span>
+    <span class="score-badge" id="score-display">Pontos: 0</span>
+    <span class="timer-badge" id="timer-display">30s</span>
+  </div>
+
+  <div id="phaser-container"></div>
+
+  <div id="question-overlay">
+    <p id="question-text">Carregando pergunta...</p>
+    <div id="options-grid" role="group" aria-label="Alternativas de resposta"></div>
+    <p id="feedback-text" aria-live="assertive"></p>
+  </div>
+</section>
+
+<div id="audio-narrator" class="visually-hidden" aria-live="polite"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+<script src="js/nicknameGenerator.js"></script>
+<script src="js/accessibility.js"></script>
+<script src="js/math.js"></script>
+<script src="js/game/PenaltyScene.js"></script>
+<script src="js/menu.js"></script>
+
+</body>
+</html>

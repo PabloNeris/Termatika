@@ -1,0 +1,54 @@
+:root {
+  --color-grass: #1b7a4d;
+  --color-grass-dark: #0f3d28;
+  --color-gold: #f5b942;
+  --color-gold-dark: #c98f1f;
+  --color-sky: #4fa8d8;
+  --color-cream: #fbf7ec;
+  --color-ink: #16231c;
+  --color-white: #ffffff;
+  --color-success: #2e9e5b;
+  --color-try-again: #4a6fa5;
+
+  --font-display: 'Baloo 2', system-ui, sans-serif;
+  --font-body: 'Atkinson Hyperlegible', system-ui, sans-serif;
+
+  --space-1: 8px;
+  --space-2: 16px;
+  --space-3: 24px;
+  --space-4: 40px;
+  --radius-lg: 24px;
+  --radius-pill: 999px;
+
+  --touch-target-min: 64px;
+}
+
+body.high-contrast {
+  --color-grass: #000000;
+  --color-grass-dark: #000000;
+  --color-gold: #ffd400;
+  --color-sky: #00c2ff;
+  --color-cream: #000000;
+  --color-ink: #ffffff;
+  --color-white: #000000;
+  --color-success: #2eff7a;
+  --color-try-again: #66d1ff;
+}
+
+body.dyslexia-friendly {
+  letter-spacing: 0.04em;
+  word-spacing: 0.12em;
+}
+body.dyslexia-friendly * {
+  line-height: 1.7 !important;
+}
+
+body.large-text {
+  font-size: 22px;
+}
+body.large-text .title {
+  font-size: 2.6rem;
+}
+body.large-text .option-btn {
+  font-size: 1.5rem;
+}
